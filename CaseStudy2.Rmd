@@ -1,0 +1,438 @@
+---
+title: "CaseStudy2"
+author: "Yucheol Shin"
+date: "8/7/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn=-1)
+
+library(MASS)
+library(tidyr)
+library(dplyr)
+library(caret)
+library(class)
+library(gridExtra)
+library(readxl)
+```
+
+Data Prepartion
+```{r}
+caseStudy2 = read.csv("data/CaseStudy2-data.csv", header = TRUE)
+
+caseStudy2$Attrition = as.factor(caseStudy2$Attrition)
+caseStudy2$BusinessTravel = as.factor(caseStudy2$BusinessTravel)
+caseStudy2$Department = as.factor(caseStudy2$Department)
+caseStudy2$EducationField = as.factor(caseStudy2$EducationField)
+caseStudy2$Gender = as.factor(caseStudy2$Gender)
+caseStudy2$JobRole = as.factor(caseStudy2$JobRole)
+caseStudy2$MaritalStatus = as.factor(caseStudy2$MaritalStatus)
+caseStudy2$Over18 = as.factor(caseStudy2$Over18)
+caseStudy2$OverTime = as.factor(caseStudy2$OverTime)
+caseStudy2$EnvironmentSatisfaction  = as.factor(caseStudy2$EnvironmentSatisfaction )
+caseStudy2$JobLevel = as.factor(caseStudy2$JobLevel)
+caseStudy2$JobSatisfaction = as.factor(caseStudy2$JobSatisfaction)
+caseStudy2$PerformanceRating = as.factor(caseStudy2$PerformanceRating)
+caseStudy2$RelationshipSatisfaction = as.factor(caseStudy2$RelationshipSatisfaction)
+caseStudy2$StockOptionLevel = as.factor(caseStudy2$StockOptionLevel)
+caseStudy2$WorkLifeBalance = as.factor(caseStudy2$WorkLifeBalance)
+caseStudy2$Attrition = ifelse(caseStudy2$Attrition=="No", 0, 1)
+caseStudy2$Attrition = as.factor(caseStudy2$Attrition)
+caseStudy2$OverTime = ifelse(caseStudy2$OverTime=="No", 0, 1)
+caseStudy2$OverTime = as.factor(caseStudy2$OverTime)
+str(caseStudy2)
+```
+
+
+Missing Data
+```{r}
+sapply(caseStudy2, function(x) sum(is.na(x)))
+```
+There is no missing data.
+
+
+EDA Numeric Summary
+```{r}
+#Overtime is factor of 0 and 1. So when we make it to numeric, 0 becomes 1 and 1 becomes 2. Thus we minus 1.
+caseStudy2 %>% group_by(Attrition) %>% 
+  summarize(
+    Mean_Income = mean(MonthlyIncome), 
+    Mean_Years = median(YearsAtCompany), 
+    Mean_OverTime = mean(as.numeric(OverTime) - 1), 
+    Mean_Job_Satisfication = mean(as.numeric(JobSatisfaction)), 
+    count = n())
+
+
+caseStudy2 %>% group_by(JobSatisfaction) %>% 
+  summarize(
+    Mean_Income = mean(MonthlyIncome), 
+    Mean_Years = median(YearsAtCompany), 
+    Mean_OverTime = mean(as.numeric(OverTime) - 1), 
+    Mean_Attrition = mean(as.numeric(Attrition) - 1), 
+    count = n())
+
+```
+
+
+EDA Graph
+```{r}
+
+caseStudy2 %>% ggplot(aes(JobSatisfaction, JobRole)) + geom_count(aes(color = ..n.., size = ..n..)) + guides(color = 'legend') +
+  labs(y="Job Role", 
+       x="Job Satisfaction", 
+       title="Job Role vs Satisfication")
+
+caseStudy2 %>% ggplot(aes(JobSatisfaction, OverTime)) + geom_count(aes(color = ..n.., size = ..n..)) + guides(color = 'legend') +
+  labs(y="Overtime", 
+       x="Job Satisfaction", 
+       title="Overtime vs Job Satisfication")
+caseStudy2 %>% ggplot(aes(YearsAtCompany, color=JobSatisfaction)) + geom_freqpoly()+
+  labs(y="Count", 
+       x="Years at Company", 
+       title="Job Satisfication over Years at Company")
+
+
+caseStudy2 %>% ggplot(aes(Attrition, OverTime)) + geom_count(aes(color = ..n.., size = ..n..)) + guides(color = 'legend') +
+  labs(y="Overtime", 
+       x="Attrition", 
+       title="Overtime vs Attrition")
+
+caseStudy2 %>% ggplot(aes(Age, MonthlyIncome, color=Gender)) + geom_point() + geom_smooth(method="lm", se=F) +
+  labs(y="Monthly Income", 
+       x="Age", 
+       title="Age vs Monthly Income by Gender")
+
+
+caseStudy2 %>% ggplot(aes(MonthlyIncome, color=Attrition)) + geom_freqpoly()+
+  labs(y="Count", 
+       x="MonthlyIncome", 
+       title="Monthly Income by Attrition")
+
+
+```
+1 WorkLifeBalance
+2 NumCompaniesWorked
+3 OverTimeYes
+4 JobSatisfaction
+Attrition           
+MonthlyIncome
+Gender               
+YearsAtCompany       
+
+
+
+Clean Constant feature
+```{r}
+# count number of unqiue values in column (1 is row, 2 is column)
+apply(caseStudy2, 2, function(x) length(unique(x)))
+
+cleanData <- subset(caseStudy2, select = -c(EmployeeCount, Over18, StandardHours))
+```
+We are dropping EmployeeCount, Over18, StandardHours features as there is only one unique value.
+
+
+
+
+Multicollinearity for continous variables
+We are using pearson correlation to find correlation between numeric data.
+Data with 0.5 < perason correlation has strong correlation.
+```{r}
+numericColumns <- unlist(lapply(cleanData, is.numeric))  
+numericData = cleanData[ , numericColumns]
+correlation = cor(numericData, method = c("pearson"))
+
+round_df <- function(x, digits) {
+    numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+
+correlation = round_df(correlation, 4)
+```
+Strong Correlation
+TotalWorkingYears - Age
+TotalWorkingYears - MonthlyIncome
+TotalWorkingYears - YearsAtCompany
+YearsInCurrentRole - YearsAtCompany
+YearsInCurrentRole - YearsSinceLastPromotion
+YearsInCurrentRole - YearsWithCurrManager
+YearsAtCompany - YearsSinceLastPromotion
+YearsAtCompany - YearsWithCurrManager
+YearsWithCurrManager - YearsSinceLastPromotion
+
+
+Chi-squared Test
+Null = variables are independent
+Alternative = there is a relationship
+```{r}
+tbl = table(cleanData$TotalWorkingYears, cleanData$Attrition) 
+chisq.test(tbl) 
+
+tbl = table(cleanData$YearsAtCompany, cleanData$Attrition) 
+chisq.test(tbl) 
+
+tbl = table(cleanData$YearsSinceLastPromotion, cleanData$Attrition) 
+chisq.test(tbl) 
+
+tbl = table(cleanData$YearsWithCurrManager, cleanData$Attrition) 
+chisq.test(tbl) 
+
+tbl = table(cleanData$YearsInCurrentRole, cleanData$Attrition) 
+chisq.test(tbl) 
+
+cleanData <- subset(cleanData, select = -c(ID, TotalWorkingYears, YearsSinceLastPromotion, YearsWithCurrManager,YearsInCurrentRole))
+```
+YearsSinceLastPromotion and YearsAtCompany has strong correlation. 
+Since chi-squared test with YearsAtCompany reject the null, we can assume YearsAtCompany is more relate to Attrition than YearsSinceLastPromotion. Thus we choose YearsAtCompany for our model.
+Since YearsAtCompany has lower p value and has strong correlation with other years variables, we choose YearsAtCompany for our variable.
+Thus from multicorrlinearity, we got Age, MontlyIncome, YearsAtCompany.
+Finally, we drop TotalWorkingYears, YearsSinceLastPromotion, YearsWithCurrManager, and YearsInCurrentRole. We also drop ID as that is not feature.
+
+
+Stepwise Feature Selection
+```{r}
+model <- glm(Attrition ~., data = cleanData, family = binomial)
+stepwise <- model %>% stepAIC(trace = FALSE)
+summary(stepwise)
+```
+
+
+Cook's Distance for OutLiers
+```{r}
+cooksd <- cooks.distance(stepwise)
+
+sample_size <- nrow(cleanData)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add label
+
+influential <- as.numeric(names(cooksd)[(cooksd > (4/sample_size))])
+cleanData <- cleanData[-influential, ]
+
+model2 <- glm(Attrition ~., data = cleanData, family = binomial)
+stepwise2 <- model2 %>% stepAIC(trace = FALSE)
+summary(stepwise2)
+```
+From stepwise model we found
+    Age + BusinessTravel + DailyRate + 
+    Department + DistanceFromHome + Gender + HourlyRate + JobInvolvement + 
+    JobLevel + JobSatisfaction + NumCompaniesWorked + OverTime + 
+    PercentSalaryHike + RelationshipSatisfaction + StockOptionLevel + 
+    TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany
+are the features we should use to build the model
+
+
+
+Feature Importance
+```{r}
+importance <- varImp(stepwise2, scale=FALSE)
+head(arrange(importance,desc(Overall)), n = 5)
+head(importance)
+```
+Top 5 important features
+1 WorkLifeBalance
+2 NumCompaniesWorked
+3 OverTimeYes
+4 JobSatisfaction
+5 StockOptionLevel
+
+
+Prediction and Confusion Matrix
+```{r}
+set.seed(4)
+splitPerc = .70
+trainIndices = sample(1:dim(cleanData)[1],round(splitPerc * dim(cleanData)[1]))
+train = cleanData[trainIndices,]
+test = cleanData[-trainIndices,]
+
+
+trainFit <- glm(Attrition ~., data = train, family = binomial)
+trainModel <- trainFit %>% stepAIC(trace = FALSE)
+pred <- predict(trainModel,test)
+pred <- as.factor(as.numeric(pred>0.5))
+confusionMatrix(pred, reference = test$Attrition)
+
+```
+
+Use original data to get the accuracy
+```{r}
+trainFit <- glm(formula = Attrition ~ Age + BusinessTravel + DailyRate + 
+    Department + DistanceFromHome + Gender + HourlyRate + JobInvolvement + 
+    JobLevel + JobSatisfaction + NumCompaniesWorked + OverTime + 
+    PercentSalaryHike + RelationshipSatisfaction + StockOptionLevel + 
+    TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany, 
+    family = binomial, data = train)
+trainModel <- trainFit %>% stepAIC(trace = FALSE)
+
+pred <- predict(trainModel,caseStudy2)
+pred <- as.factor(as.numeric(pred>0.5))
+confusionMatrix(pred, reference = caseStudy2$Attrition)
+```
+
+KNN
+```{r}
+set.seed(4)
+splitPerc = .70
+knnData <- caseStudy2
+knnData[1:36] = sapply(knnData[,1:36], as.numeric)
+
+trainIndices = sample(1:dim(knnData)[1],round(splitPerc * dim(knnData)[1]))
+train = knnData[trainIndices,]
+test = knnData[-trainIndices,]
+
+knnModel = knn(train, test, train$Attrition, prob = TRUE, k = 5)
+table(test$Attrition,knnModel)
+CM = confusionMatrix(table(test$Attrition ,knnModel))
+CM
+```
+
+
+KNN with original Data
+```{r}
+
+set.seed(4)
+splitPerc = .70
+knnData <- caseStudy2
+knnData[1:36] = sapply(knnData[,1:36], as.numeric)
+
+knnModel = knn(knnData, knnData, knnData$Attrition, prob = TRUE, k = 5)
+table(knnData$Attrition, knnModel)
+CM = confusionMatrix(table(knnData$Attrition ,knnModel))
+CM
+
+```
+
+
+KNN with feature selection
+```{r}
+
+knnFeatureData <- subset(caseStudy2, select = c(Attrition, Age, BusinessTravel, DailyRate, Department, DistanceFromHome, Gender, HourlyRate, JobInvolvement, JobLevel, JobSatisfaction, NumCompaniesWorked, OverTime, PercentSalaryHike, RelationshipSatisfaction, StockOptionLevel, TrainingTimesLastYear, WorkLifeBalance, YearsAtCompany))
+knnFeatureData[1:19] = sapply(knnFeatureData[,1:19], as.numeric)
+
+set.seed(4)
+splitPerc = .70
+
+trainIndices = sample(1:dim(knnFeatureData)[1],round(splitPerc * dim(knnFeatureData)[1]))
+train = knnFeatureData[trainIndices,]
+test = knnFeatureData[-trainIndices,]
+
+knnModel = knn(train, test, train$Attrition, prob = TRUE, k = 5)
+table(test$Attrition,knnModel)
+CM = confusionMatrix(table(test$Attrition ,knnModel))
+CM
+
+```
+
+
+Salary Prediction
+```{r}
+
+data3 <- subset(caseStudy2, select = -c(ID, EmployeeCount, Over18, StandardHours, TotalWorkingYears, YearsSinceLastPromotion, YearsWithCurrManager,YearsInCurrentRole))
+str(data3)
+linearModel <- lm(MonthlyIncome ~., data=data3)  # build linear regression model on full data
+stepwiseLinear <- linearModel %>% stepAIC(trace = FALSE)
+cooksd <- cooks.distance(stepwiseLinear)
+
+sample_size <- nrow(data3)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add label
+
+influential <- as.numeric(names(cooksd)[(cooksd > (4/sample_size))])
+data3 <- data3[-influential, ]
+
+linearModel <- lm(MonthlyIncome ~., data=data3)  # build linear regression model on full data
+stepwiseLinear <- linearModel %>% stepAIC(trace = FALSE)
+summary(stepwiseLinear)
+
+
+importanceIncome <- varImp(stepwiseLinear, scale=FALSE)
+head(arrange(importanceIncome,desc(Overall)), n = 5)
+head(importanceIncome)
+```
+
+Prediction and RMSE for Linear Regression
+```{r}
+set.seed(4)
+splitPerc = .70
+trainIndices = sample(1:dim(data3)[1],round(splitPerc * dim(data3)[1]))
+train = data3[trainIndices,]
+test = data3[-trainIndices,]
+
+
+trainFit <- lm(MonthlyIncome ~., data=train)
+trainModel <- trainFit %>% stepAIC(trace = FALSE)
+
+#Predict monthly income
+incomePred <- predict(trainModel, test)
+head(incomePred)
+#Model Summary
+summary (trainModel)
+
+RSS <- c(crossprod(trainModel$residuals))
+#Mean squared error:
+MSE <- RSS / length(trainModel$residuals)
+#Root MSE:
+RMSE <- sqrt(MSE)
+RMSE
+```
+
+
+Predict Attrition with No Attrition Data
+```{r}
+attritionPredData = read.csv("data/CaseStudy2CompSet No Attrition.csv", header = TRUE)
+attritionPredData$OverTime = ifelse(attritionPredData$OverTime=="No", 0, 1)
+attritionPredData$OverTime = as.factor(attritionPredData$OverTime)
+attritionPredData$EnvironmentSatisfaction  = as.factor(attritionPredData$EnvironmentSatisfaction )
+attritionPredData$JobLevel = as.factor(attritionPredData$JobLevel)
+attritionPredData$JobSatisfaction = as.factor(attritionPredData$JobSatisfaction)
+attritionPredData$PerformanceRating = as.factor(attritionPredData$PerformanceRating)
+attritionPredData$RelationshipSatisfaction = as.factor(attritionPredData$RelationshipSatisfaction)
+attritionPredData$StockOptionLevel = as.factor(attritionPredData$StockOptionLevel)
+attritionPredData$WorkLifeBalance = as.factor(attritionPredData$WorkLifeBalance)
+
+trainFit <- glm(formula = Attrition ~ Age + BusinessTravel + DailyRate + 
+    Department + DistanceFromHome + Gender + HourlyRate + JobInvolvement + 
+    JobLevel + JobSatisfaction + NumCompaniesWorked + OverTime + 
+    PercentSalaryHike + RelationshipSatisfaction + StockOptionLevel + 
+    TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany, 
+    family = binomial, data = cleanData)
+trainModel <- trainFit %>% stepAIC(trace = FALSE)
+
+pred <- predict(trainModel,attritionPredData)
+pred <- as.factor(as.numeric(pred>0.5))
+attritionPredData$Attrition = pred
+attritionPredResult <- subset(attritionPredData, select = c(ID, Attrition))
+attritionPredResult$Attrition = ifelse(attritionPredResult$Attrition==0, "No", "Yes")
+attritionPredResult$Attrition = as.factor(attritionPredResult$Attrition)
+write.csv(x=attritionPredResult, file="Case2PredictionsShin Attrition.csv", row.names=FALSE,quote=FALSE)
+```
+
+
+Predict Salary with No MonthlyIncome Data
+```{r}
+salaryPredData <- read_excel( "data/CaseStudy2CompSet No Salary.xlsx")
+salaryPredData$OverTime = ifelse(salaryPredData$OverTime=="No", 0, 1)
+salaryPredData$OverTime = as.factor(salaryPredData$OverTime)
+salaryPredData$Attrition = ifelse(salaryPredData$Attrition=="No", 0, 1)
+salaryPredData$Attrition = as.factor(salaryPredData$Attrition)
+salaryPredData$EnvironmentSatisfaction  = as.factor(salaryPredData$EnvironmentSatisfaction )
+salaryPredData$JobLevel = as.factor(salaryPredData$JobLevel)
+salaryPredData$JobSatisfaction = as.factor(salaryPredData$JobSatisfaction)
+salaryPredData$PerformanceRating = as.factor(salaryPredData$PerformanceRating)
+salaryPredData$RelationshipSatisfaction = as.factor(salaryPredData$RelationshipSatisfaction)
+salaryPredData$StockOptionLevel = as.factor(salaryPredData$StockOptionLevel)
+salaryPredData$WorkLifeBalance = as.factor(salaryPredData$WorkLifeBalance)
+
+linearModel = lm(formula = MonthlyIncome ~ Age + Attrition + BusinessTravel + 
+    JobLevel + JobRole + NumCompaniesWorked + OverTime + PercentSalaryHike + 
+    PerformanceRating + YearsAtCompany, data = caseStudy2)
+predSalary = predict(linearModel, newdata = salaryPredData)
+salaryPredData$MonthlyIncome = predSalary
+salaryPredResult <- subset(salaryPredData, select = c(ID, MonthlyIncome))
+write.csv(x=salaryPredResult, file="Case2PredictionsShin Salary.csv", row.names=FALSE, quote=FALSE)
+```
